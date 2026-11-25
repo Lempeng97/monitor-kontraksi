@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121014">
+<title>Monitor Kontraksi</title>
+<style>
+  /* Layout: satu kolom ala aplikasi HP: ringkasan di atas, daftar sesi di tengah, tombol status besar di bawah */
+  :root {
+    --bg: #121014;
+    --surface: #1d1a1f;
+    --surface-2: #2a262c;
+    --line: #3a353d;
+    --fg: #f4eef1;
+    --muted: #9b929a;
+    --rose: #e07b95;
+    --rose-soft: #f6d3dc;
+    --ok: #6fcf97;
+    --warn: #f2c14e;
+    --crit: #ef6a6a;
+    color-scheme: dark;
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 15px;
+    min-height: 100vh;
+    padding-block: 12px 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .app { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--rose); outline-offset: 2px; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+  .icon-btn {
+    width: 44px; height: 44px; border-radius: 50%; border: 0;
+    background: var(--surface-2); display: grid; place-items: center;
+  }
+  .conn { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 4px rgba(111,207,151,.18); }
+  .dot.demo { background: var(--warn); }
+  .dot.off { background: var(--crit); }
+
+  .summary {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center;
+    background: var(--surface); border-radius: 20px; padding: 18px 8px;
+  }
+  .summary .v { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .summary .l { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.3; }
+
+  .vitals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .tile { background: var(--surface); border-radius: 16px; padding: 12px 14px; min-width: 0; }
+  .tile .l { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile .sub { font-size: 12px; color: var(--muted); }
+  .bar { height: 6px; border-radius: 3px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--rose); border-radius: 3px; transition: width .4s; }
+  .pill {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--surface-2); color: var(--ok);
+  }
+  .pill.MEDIUM { color: var(--warn); }
+  .pill.HIGH { color: var(--crit); }
+
+  .sessions h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .row {
+    display: grid; grid-template-columns: 1fr 44px 1fr; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--surface-2);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .dur { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .row .dur small { display: block; font-size: 12px; color: var(--muted); }
+  .row .num {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--surface-2);
+    display: grid; place-items: center; font-weight: 600;
+  }
+  .row.latest .dur, .row.latest .num { color: var(--rose); }
+  .row .pain { text-align: right; font-size: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row.empty { opacity: .45; }
+  .row.empty .dur { font-size: 14px; }
+
+  .downloads { display: flex; gap: 10px; flex-wrap: wrap; }
+  .dl {
+    flex: 1 1 180px; min-height: 44px; padding: 10px 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface); font-weight: 600; font-size: 14px;
+  }
+  .dl:hover { background: var(--surface-2); }
+  .dl small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+
+  .bigwrap { display: grid; place-items: center; padding-top: 6px; }
+  .big {
+    width: 230px; height: 230px; border-radius: 50%;
+    border: 12px solid var(--line); background: var(--surface-2);
+    display: grid; place-items: center; text-align: center; padding: 20px;
+    transition: background .3s, border-color .3s;
+  }
+  .big .state { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: var(--rose-soft); }
+  .big .time { font-size: 44px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 4px; }
+  .big.active { background: var(--rose); border-color: #5a3640; animation: pulse 1.6s ease-in-out infinite; }
+  .big.active .state { color: #2a0f17; }
+  .big.active .time { color: #2a0f17; }
+  .big:not(.active) .time { color: var(--muted); font-size: 30px; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 14px rgba(224,123,149,.16); } }
+  @media (prefers-reduced-motion: reduce) { .big.active { animation: none; } .bar > i { transition: none; } }
+
+  .note { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5; }
+
+  dialog {
+    width: min(420px, calc(100vw - 32px)); border: 0; border-radius: 20px; padding: 20px;
+    background: var(--surface); color: var(--fg);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog h3 { margin: 0 0 4px; font-size: 18px; }
+  dialog p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input {
+    width: 100%; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--fg); font: inherit;
+  }
+  .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .btn { flex: 1; padding: 11px 14px; border-radius: 12px; border: 0; background: var(--surface-2); font-weight: 600; }
+  .btn.primary { background: var(--rose); color: #2a0f17; }
+  .err { color: var(--crit); font-size: 12px; margin-top: 8px; min-height: 1em; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Kontraksi</h1>
+      <span class="conn"><span id="dot" class="dot demo"></span><span id="connText">Mode demo</span></span>
+    </div>
+    <button class="icon-btn" id="openSettings" aria-label="Pengaturan koneksi Blynk">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <section class="summary" aria-label="Ringkasan">
+    <div><div class="v" id="sAvgDur">0</div><div class="l">rata-rata durasi (detik)</div></div>
+    <div><div class="v" id="sCount">0</div><div class="l">sesi<br>tersimpan</div></div>
+    <div><div class="v" id="sAvgPain">0</div><div class="l">rata-rata<br>nyeri (/10)</div></div>
+  </section>
+
+  <section class="vitals" aria-label="Sensor">
+    <div class="tile">
+      <div class="l">FSR 1</div><div class="v" id="vFsr1">0</div>
+      <div class="bar"><i id="bFsr1"></i></div>
+    </div>
+    <div class="tile">
+      <div class="l">FSR 2</div><div class="v" id="vFsr2">0</div>
+      <div class="bar"><i id="bFsr2"></i></div>
+    </div>
+    <div class="tile">
+      <div class="l">Gerakan</div><div class="v" id="vMove">NO</div>
+      <div class="sub">Dari sensor MPU</div>
+    </div>
+    <div class="tile">
+      <div class="l">Skala nyeri</div><div class="v"><span id="vPain">0</span><span style="font-size:14px;color:var(--muted)">/10</span></div>
+      <span class="pill" id="vStatus">LOW</span>
+    </div>
+  </section>
+
+  <div class="bigwrap">
+    <div class="big" id="big" role="status" aria-live="polite">
+      <div>
+        <div class="state" id="bigState">Kontraksi berhenti</div>
+        <div class="time" id="bigTime">00:00</div>
+      </div>
+    </div>
+  </div>
+
+  <section class="sessions" aria-label="Riwayat sesi">
+    <h2>Riwayat sesi</h2>
+    <div id="list"></div>
+  </section>
+
+  <section class="downloads" aria-label="Unduh data">
+    <button class="dl" id="dlSessions" type="button">Unduh riwayat sesi (CSV)<small id="dlSessionsInfo">10 sesi terakhir</small></button>
+    <button class="dl" id="dlLog" type="button">Unduh log langsung (CSV)<small id="dlLogInfo">0 baris tercatat</small></button>
+  </section>
+
+  <p class="note" id="note">Data contoh. Buka pengaturan (ikon gerigi) dan masukkan Auth Token Blynk untuk melihat data perangkat.</p>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h3>Koneksi Blynk</h3>
+    <p>Token dipakai untuk membaca V0 sampai V16 dari perangkat. Token disimpan hanya di browser ini.</p>
+    <label for="token">Auth Token</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Salin dari Devices, Device Info">
+    <label for="server">Server</label>
+    <input id="server" type="text" autocomplete="off" spellcheck="false" value="blynk.cloud">
+    <div class="err" id="err"></div>
+    <div class="actions">
+      <button type="button" class="btn" id="demoBtn">Mode demo</button>
+      <button type="submit" class="btn primary" id="saveBtn">Sambungkan</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var PINS = ["v0","v1","v2","v3","v4","v5","v6","v7","v8","v9","v10","v11","v12","v13","v14","v15","v16"];
+  var FSR_MAX = 4095;
+  var timer = null, mode = "demo", failCount = 0;
+  var lastSessions = [], logRows = [], MAX_LOG = 20000;
+  // Pelacak kontraksi: nilai FSR terakhir dan puncak selama kontraksi berlangsung
+  var wasActive = false, lastA1 = 0, lastA2 = 0, lastDur = 0, peak1 = 0, peak2 = 0;
+  var events = [];   // kontraksi yang sudah selesai, terbaru di depan
+
+  function p2(n) { return (n < 10 ? "0" : "") + n; }
+  function stamp() {
+    var t = new Date();
+    return t.getFullYear() + "-" + p2(t.getMonth() + 1) + "-" + p2(t.getDate()) + " " +
+      p2(t.getHours()) + ":" + p2(t.getMinutes()) + ":" + p2(t.getSeconds());
+  }
+  function csvCell(v) {
+    v = String(v === undefined || v === null ? "" : v);
+    return /[;"\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+  }
+  function downloadCsv(name, header, rows) {
+    var lines = [header].concat(rows).map(function (r) { return r.map(csvCell).join(";"); });
+    var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  function fileStamp() { return stamp().replace(/[: ]/g, "-"); }
+
+  function store(k, v) {
+    try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {}
+    return null;
+  }
+
+  /* ---------- tampilan ---------- */
+  function mmss(s) {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    var m = Math.floor(s / 60), r = s % 60;
+    return (m < 10 ? "0" : "") + m + ":" + (r < 10 ? "0" : "") + r;
+  }
+  function parseSession(txt) {
+    var m = /Durasi\s+(\d+)s.*Pain\s+(\d+)\/10/i.exec(String(txt || ""));
+    return m ? { dur: +m[1], pain: +m[2] } : null;
+  }
+  function render(d) {
+    var fsr1 = Number(d.v0) || 0, fsr2 = Number(d.v1) || 0;
+    $("vFsr1").textContent = fsr1; $("vFsr2").textContent = fsr2;
+    $("bFsr1").style.width = Math.min(100, fsr1 / FSR_MAX * 100) + "%";
+    $("bFsr2").style.width = Math.min(100, fsr2 / FSR_MAX * 100) + "%";
+    $("vMove").textContent = String(d.v2 || "NO").toUpperCase();
+
+    var pain = Number(d.v5) || 0;
+    $("vPain").textContent = pain;
+    var status = String(d.v6 || "").toUpperCase();
+    if (status === "NORMAL" || !status) status = pain >= 9 ? "HIGH" : pain >= 5 ? "MEDIUM" : "LOW";
+    var pill = $("vStatus"); pill.textContent = status; pill.className = "pill " + status;
+
+    var active = String(d.v3 || "NO").toUpperCase() === "YES";
+    $("big").className = "big" + (active ? " active" : "");
+    $("bigState").textContent = active ? "Kontraksi berlangsung" : "Kontraksi berhenti";
+    $("bigTime").textContent = active ? mmss(d.v4) : "menunggu";
+
+    var sessions = [];
+    for (var i = 7; i <= 16; i++) sessions.push(parseSession(d["v" + i]));
+    var valid = sessions.filter(Boolean);
+    var sumDur = valid.reduce(function (a, s) { return a + s.dur; }, 0);
+    var sumPain = valid.reduce(function (a, s) { return a + s.pain; }, 0);
+    lastSessions = sessions;
+    $("dlSessionsInfo").textContent = valid.length + " sesi tersimpan";
+    if (mode === "live") {
+      var ended = null;
+      if (active) {
+        wasActive = true;
+        lastA1 = fsr1; lastA2 = fsr2; lastDur = Number(d.v4) || 0;
+        peak1 = Math.max(peak1, fsr1); peak2 = Math.max(peak2, fsr2);
+      } else if (wasActive) {
+        ended = { time: stamp(), dur: lastDur, l1: lastA1, l2: lastA2, p1: peak1, p2: peak2, pain: pain };
+        events.unshift(ended);
+        wasActive = false; peak1 = 0; peak2 = 0;
+      }
+      logRows.push([stamp(), fsr1, fsr2, String(d.v2 || "NO").toUpperCase(),
+        active ? "YES" : "NO", Number(d.v4) || 0, pain, status,
+        ended ? ended.l1 : "", ended ? ended.l2 : "", ended ? ended.p1 : "", ended ? ended.p2 : ""]);
+      if (logRows.length > MAX_LOG) logRows.shift();
+      $("dlLogInfo").textContent = logRows.length + " baris tercatat";
+    }
+    $("sCount").textContent = valid.length;
+    $("sAvgDur").textContent = valid.length ? (sumDur / valid.length).toFixed(0) : "0";
+    $("sAvgPain").textContent = valid.length ? (sumPain / valid.length).toFixed(1) : "0";
+
+    var html = "";
+    sessions.forEach(function (s, idx) {
+      var n = idx + 1;
+      if (s) {
+        html += '<div class="row' + (idx === 0 ? " latest" : "") + '"><div class="dur">' + mmss(s.dur) +
+          '<small>' + s.dur + ' detik</small></div><div class="num">' + n + '</div>' +
+          '<div class="pain">nyeri ' + s.pain + '/10</div></div>';
+      } else if (idx < 4 || valid.length === 0 && idx < 4) {
+        html += '<div class="row empty"><div class="dur">Belum ada data</div><div class="num">' + n + '</div><div class="pain"></div></div>';
+      }
+    });
+    $("list").innerHTML = html;
+  }
+
+  function setConn(kind, text) {
+    $("dot").className = "dot " + kind;
+    $("connText").textContent = text;
+  }
+
+  /* ---------- mode demo ---------- */
+  var demo = { t: 0, active: false, dur: 0, hist: [[34,4],[41,5],[28,3],[47,6]] };
+  function demoTick() {
+    demo.t++;
+    if (!demo.active && demo.t % 12 === 0) { demo.active = true; demo.dur = 0; }
+    else if (demo.active) {
+      demo.dur++;
+      if (demo.dur >= 8) { demo.active = false; demo.hist.unshift([demo.dur * 4, 3 + (demo.t % 5)]); demo.hist = demo.hist.slice(0, 10); }
+    }
+    var d = {
+      v0: demo.active ? 2200 + Math.round(Math.random() * 400) : 180 + Math.round(Math.random() * 40),
+      v1: demo.active ? 2000 + Math.round(Math.random() * 400) : 160 + Math.round(Math.random() * 40),
+      v2: "NO", v3: demo.active ? "YES" : "NO", v4: demo.dur, v5: 4, v6: "LOW"
+    };
+    for (var i = 0; i < 10; i++) {
+      d["v" + (7 + i)] = demo.hist[i] ? "Sesi " + (i + 1) + " | Durasi " + demo.hist[i][0] + "s | Pain " + demo.hist[i][1] + "/10" : "Sesi " + (i + 1) + " | Belum ada data";
+    }
+    render(d);
+  }
+
+  /* ---------- Blynk HTTP API ---------- */
+  function base(server) { return "https://" + (server || "blynk.cloud").replace(/^https?:\/\//, "").replace(/\/+$/, ""); }
+  function fetchBlynk(token, server) {
+    var q = "token=" + encodeURIComponent(token) + "&" + PINS.join("&");
+    return fetch(base(server) + "/external/api/get?" + q).then(function (r) {
+      if (!r.ok) throw new Error(r.status === 400 ? "Token tidak dikenali (cek Auth Token)" : "Server membalas " + r.status);
+      return r.json();
+    });
+  }
+  function checkOnline(token, server) {
+    return fetch(base(server) + "/external/api/isHardwareConnected?token=" + encodeURIComponent(token))
+      .then(function (r) { return r.text(); }).then(function (t) { return t.trim() === "true"; });
+  }
+  function liveTick() {
+    var token = store("blynkToken"), server = store("blynkServer") || "blynk.cloud";
+    Promise.all([fetchBlynk(token, server), checkOnline(token, server)]).then(function (res) {
+      failCount = 0;
+      render(res[0]);
+      setConn(res[1] ? "on" : "off", res[1] ? "Perangkat online" : "Perangkat offline (data terakhir)");
+      $("note").textContent = "Data langsung dari Blynk, diperbarui tiap 2 detik.";
+    }).catch(function (e) {
+      failCount++;
+      setConn("off", "Gagal terhubung");
+      $("note").textContent = "Tidak bisa membaca Blynk: " + (e && e.message ? e.message : "periksa internet dan token") + ".";
+    });
+  }
+
+  function start(newMode) {
+    mode = newMode;
+    wasActive = false; peak1 = 0; peak2 = 0;
+    if (timer) clearInterval(timer);
+    if (mode === "live") {
+      setConn("demo", "Menghubungkan...");
+      liveTick(); timer = setInterval(liveTick, 2000);
+    } else {
+      setConn("demo", "Mode demo");
+      $("note").textContent = "Data contoh. Buka pengaturan (ikon gerigi) dan masukkan Auth Token Blynk untuk melihat data perangkat.";
+      demoTick(); timer = setInterval(demoTick, 1000);
+    }
+  }
+
+  /* ---------- pengaturan ---------- */
+  var dlg = $("dlg");
+  $("openSettings").addEventListener("click", function () {
+    $("token").value = store("blynkToken") || "";
+    $("server").value = store("blynkServer") || "blynk.cloud";
+    $("err").textContent = "";
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+  });
+  $("form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var token = $("token").value.trim(), server = $("server").value.trim() || "blynk.cloud";
+    if (!token) { $("err").textContent = "Isi Auth Token dulu."; return; }
+    $("err").textContent = "Memeriksa token...";
+    fetchBlynk(token, server).then(function () {
+      store("blynkToken", token); store("blynkServer", server);
+      dlg.close(); start("live");
+    }).catch(function (e) {
+      $("err").textContent = (e && e.message ? e.message : "Gagal terhubung") + ". Jika token benar, cek server/region akun Blynk.";
+    });
+  });
+  $("demoBtn").addEventListener("click", function () {
+    store("blynkToken", null); dlg.close(); start("demo");
+  });
+
+  $("dlSessions").addEventListener("click", function () {
+    var rows = [];
+    // ESP32 hanya menyimpan kontraksi >= 3 detik, jadi hanya itu yang dicocokkan
+    var saved = events.filter(function (e) { return e.dur >= 3; });
+    lastSessions.forEach(function (s, i) {
+      if (!s) return;
+      var e = saved[i];
+      var match = e && Math.abs(e.dur - s.dur) <= 3;   // cocok bila durasinya hampir sama
+      rows.push([i + 1, s.dur, s.pain,
+        match ? e.time : "", match ? e.l1 : "", match ? e.l2 : "", match ? e.p1 : "", match ? e.p2 : ""]);
+    });
+    if (!rows.length) { $("dlSessionsInfo").textContent = "Belum ada sesi untuk diunduh"; return; }
+    downloadCsv("riwayat-sesi-" + fileStamp() + ".csv",
+      ["Sesi", "Durasi (detik)", "Skala nyeri (0-10)", "Waktu berhenti",
+       "FSR1 terakhir", "FSR2 terakhir", "FSR1 puncak", "FSR2 puncak"], rows);
+  });
+  $("dlLog").addEventListener("click", function () {
+    if (!logRows.length) { $("dlLogInfo").textContent = "Belum ada data. Sambungkan Blynk dulu."; return; }
+    downloadCsv("log-kontraksi-" + fileStamp() + ".csv",
+      ["Waktu", "FSR1", "FSR2", "Gerakan", "Kontraksi", "Durasi (detik)", "Skala nyeri", "Status nyeri",
+       "FSR1 terakhir saat berhenti", "FSR2 terakhir saat berhenti", "FSR1 puncak", "FSR2 puncak"], logRows);
+  });
+
+  start(store("blynkToken") ? "live" : "demo");
+})();
+</script>
+</body>
+</html>
